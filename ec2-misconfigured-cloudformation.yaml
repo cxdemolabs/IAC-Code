@@ -105,5 +105,3 @@ Outputs:
     Value: required
     Export:
       Name: !Sub '${AWS::StackName}-IMDSv2Status'
-
-# Made with Bob
