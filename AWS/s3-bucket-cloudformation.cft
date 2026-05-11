@@ -130,5 +130,3 @@ Outputs:
     Description: Public URL of the S3 bucket
     Value: !Sub 'http://${S3Bucket}.s3-website-${AWS::Region}.amazonaws.com'
 
-# WARNING: This template contains intentional security misconfigurations for testing purposes
-# DO NOT use in production environments
