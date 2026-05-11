@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'CloudFormation '
+Description: 'CloudFormation Template with Critical AWS Misconfigurations for Security Testing'
 
 Parameters:
   BucketName:
@@ -20,6 +20,14 @@ Parameters:
   EnableEncryption:
     Type: String
     Description: Enable server-side encryption
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+  
+  EnableMFA:
+    Type: String
+    Description: Enable MFA Delete protection
     Default: 'false'
     AllowedValues:
       - 'true'
@@ -53,6 +61,10 @@ Resources:
       # MISCONFIGURATION 4: No lifecycle rules for cleanup
       # LifecycleConfiguration removed
       # MISCONFIGURATION 5: Missing logging configuration
+      # MISCONFIGURATION 11: Object Lock not enabled (prevents ransomware protection)
+      # ObjectLockEnabled: false
+      # MISCONFIGURATION 12: No MFA Delete protection
+      # MFA Delete not configured in VersioningConfiguration
       Tags:
         - Key: Name
           Value: !If [HasBucketName, !Ref BucketName, !Ref 'AWS::StackName']
@@ -99,6 +111,169 @@ Resources:
             Principal: '*'
             Action: 's3:GetObject'
             Resource: !Sub '${S3Bucket.Arn}/*'
+  
+  # MISCONFIGURATION 13: IAM Role with overly permissive S3 access
+  InsecureIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-InsecureRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        # MISCONFIGURATION 14: Using AWS managed AdministratorAccess policy
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+      Policies:
+        - PolicyName: InsecureS3Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # MISCONFIGURATION 15: Wildcard permissions on all S3 resources
+              - Effect: Allow
+                Action: 's3:*'
+                Resource: '*'
+              # MISCONFIGURATION 16: No resource restrictions
+              - Effect: Allow
+                Action:
+                  - 'iam:*'
+                  - 'ec2:*'
+                  - 'rds:*'
+                Resource: '*'
+  
+  # MISCONFIGURATION 17: Security Group with unrestricted access
+  InsecureSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-InsecureSG'
+      GroupDescription: 'Security group with critical misconfigurations'
+      # MISCONFIGURATION 18: Allows all inbound traffic from anywhere
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+          Description: 'Allow all traffic from anywhere'
+        # MISCONFIGURATION 19: SSH open to the world
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: '0.0.0.0/0'
+          Description: 'SSH open to internet'
+        # MISCONFIGURATION 20: RDP open to the world
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: '0.0.0.0/0'
+          Description: 'RDP open to internet'
+        # MISCONFIGURATION 21: Database ports exposed
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: '0.0.0.0/0'
+          Description: 'MySQL open to internet'
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: '0.0.0.0/0'
+          Description: 'PostgreSQL open to internet'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+          Description: 'Allow all outbound traffic'
+  
+  # MISCONFIGURATION 22: KMS Key with overly permissive policy
+  InsecureKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: 'KMS key with insecure policy'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          # MISCONFIGURATION 23: Allows all principals to use the key
+          - Sid: AllowAllPrincipals
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - 'kms:*'
+            Resource: '*'
+          # MISCONFIGURATION 24: No key rotation enabled
+          - Sid: EnableRootAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+      # MISCONFIGURATION 25: Automatic key rotation disabled
+      EnableKeyRotation: false
+  
+  # MISCONFIGURATION 26: RDS Instance with public access
+  InsecureRDSInstance:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      DBInstanceIdentifier: !Sub '${AWS::StackName}-insecure-db'
+      Engine: mysql
+      EngineVersion: '8.0.35'
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      MasterUsername: admin
+      # MISCONFIGURATION 27: Hardcoded password in template
+      MasterUserPassword: 'Password123!'
+      # MISCONFIGURATION 28: Database publicly accessible
+      PubliclyAccessible: true
+      # MISCONFIGURATION 29: No encryption at rest
+      StorageEncrypted: false
+      # MISCONFIGURATION 30: Automated backups disabled
+      BackupRetentionPeriod: 0
+      # MISCONFIGURATION 31: Deletion protection disabled
+      DeletionProtection: false
+      # MISCONFIGURATION 32: No enhanced monitoring
+      MonitoringInterval: 0
+      # MISCONFIGURATION 33: Multi-AZ disabled
+      MultiAZ: false
+      VPCSecurityGroups:
+        - !Ref InsecureSecurityGroup
+  
+  # MISCONFIGURATION 34: Lambda function with overly permissive execution role
+  InsecureLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        # MISCONFIGURATION 35: Lambda has full admin access
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+  
+  # MISCONFIGURATION 36: Secrets Manager secret with no rotation
+  InsecureSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Sub '${AWS::StackName}-insecure-secret'
+      Description: 'Secret without rotation policy'
+      SecretString: '{"username":"admin","password":"hardcoded123"}'
+      # MISCONFIGURATION 37: No automatic rotation configured
+      # RotationSchedule not defined
+  
+  # MISCONFIGURATION 38: CloudTrail with logging disabled
+  InsecureCloudTrail:
+    Type: 'AWS::CloudTrail::Trail'
+    Properties:
+      TrailName: !Sub '${AWS::StackName}-insecure-trail'
+      S3BucketName: !Ref S3Bucket
+      # MISCONFIGURATION 39: CloudTrail logging not enabled
+      IsLogging: false
+      # MISCONFIGURATION 40: No log file validation
+      EnableLogFileValidation: false
+      # MISCONFIGURATION 41: Not multi-region trail
+      IsMultiRegionTrail: false
+      # MISCONFIGURATION 42: Management events not logged
+      IncludeGlobalServiceEvents: false
 
 Outputs:
   BucketName:
@@ -129,4 +304,29 @@ Outputs:
   BucketWebsiteURL:
     Description: Public URL of the S3 bucket
     Value: !Sub 'http://${S3Bucket}.s3-website-${AWS::Region}.amazonaws.com'
+  
+  IAMRoleArn:
+    Description: ARN of the insecure IAM role
+    Value: !GetAtt InsecureIAMRole.Arn
+  
+  SecurityGroupId:
+    Description: ID of the insecure security group
+    Value: !Ref InsecureSecurityGroup
+  
+  KMSKeyId:
+    Description: ID of the insecure KMS key
+    Value: !Ref InsecureKMSKey
+  
+  RDSEndpoint:
+    Description: Endpoint of the publicly accessible RDS instance
+    Value: !GetAtt InsecureRDSInstance.Endpoint.Address
+  
+  # MISCONFIGURATION 43: Exposing sensitive resource identifiers
+  SecretArn:
+    Description: ARN of the secret (should not be exposed)
+    Value: !Ref InsecureSecret
+  
+  CloudTrailArn:
+    Description: ARN of the CloudTrail
+    Value: !GetAtt InsecureCloudTrail.Arn
 
